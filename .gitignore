@@ -1,0 +1,15 @@
+# Rust / maturin
+/target/
+*.so
+*.dylib
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.hypothesis/
+
+# macOS
+.DS_Store
