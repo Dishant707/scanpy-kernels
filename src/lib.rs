@@ -4,6 +4,7 @@
 //! output within a strict tolerance. See `tests/` for the golden test suite.
 
 mod core;
+mod hvg;
 mod scale;
 
 use pyo3::prelude::*;
@@ -12,5 +13,6 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scale::scale, m)?)?;
+    m.add_function(wrap_pyfunction!(hvg::hvg_seurat_stats, m)?)?;
     Ok(())
 }

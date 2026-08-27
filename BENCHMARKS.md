@@ -36,4 +36,19 @@ python bench/bench_scale.py
 
 `|kernel(X) - reference(X)| <= atol + rtol * |reference(X)|`, with
 `float64: rtol=1e-7, atol=1e-12` and `float32: rtol=1e-4, atol=1e-6`.
-Verified by 55 tests (golden fixtures + hypothesis properties).
+Verified by 76 tests (golden fixtures + hypothesis properties) across `pp.scale`
+and `pp.highly_variable_genes` (Seurat flavor).
+
+## `pp.highly_variable_genes` (Seurat flavor)
+
+| Case | Shape | dtype | reference | kernel | speedup |
+|------|-------|-------|-----------|--------|---------|
+| dense | 20k × 2k | float64 | 205 ms | 24.0 ms | 8.5× |
+| dense | 50k × 1k | float64 | 250 ms | 28.1 ms | 8.9× |
+| dense | 20k × 2k | float32 | 169 ms | 24.6 ms | 6.9× |
+| dense | 50k × 1k | float32 | 216 ms | 30.5 ms | 7.1× |
+
+The kernel computes `expm1` + per-gene mean/variance in a single row-major pass
+(no materialization of the `expm1`'d matrix, no copy); binning/normalization
+reuse the reference pandas logic. Output is bit-identical to the reference on
+the categorical/boolean parts.

@@ -9,9 +9,9 @@
 use rayon::prelude::*;
 
 /// Rows processed per parallel chunk. Fixed so results are deterministic.
-const CHUNK_ROWS: usize = 2048;
+pub(crate) const CHUNK_ROWS: usize = 2048;
 
-fn combine(partials: Vec<(Vec<f64>, Vec<f64>)>, n_cols: usize) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn combine(partials: Vec<(Vec<f64>, Vec<f64>)>, n_cols: usize) -> (Vec<f64>, Vec<f64>) {
     let mut sums = vec![0.0f64; n_cols];
     let mut sq = vec![0.0f64; n_cols];
     for (ps, pq) in partials {
@@ -73,32 +73,41 @@ pub fn column_sum_and_sq_f32(x: &[f32], n_cols: usize) -> (Vec<f64>, Vec<f64>) {
     combine(partials, n_cols)
 }
 
-/// Compute per-column mean and standard deviation using the **exact recipe**
-/// used by `fast_array_utils.stats.mean_var(..., correction=1)`:
+/// Compute per-column mean and variance using the **exact recipe** used by
+/// `fast_array_utils.stats.mean_var(..., correction=1)`:
 ///
 /// ```text
 /// mean_j = sum_j / n
 /// var_j  = (sumsq_j / n - mean_j^2) * n / (n - 1)     (n > 1)
-/// std_j  = sqrt(var_j), with std_j = 1 where var_j == 0
 /// ```
-///
-/// This is the *naive* `E[X^2] - E[X]^2` formula (not the two-pass formula),
-/// intentionally kept identical to the reference implementation so outputs
-/// match within floating-point tolerance.
-pub fn column_mean_std(sums: &[f64], sumsq: &[f64], n_rows: usize) -> (Vec<f64>, Vec<f64>) {
+pub fn column_mean_var(sums: &[f64], sumsq: &[f64], n_rows: usize) -> (Vec<f64>, Vec<f64>) {
     let n = n_rows as f64;
     let mut mean = vec![0.0f64; sums.len()];
-    let mut std = vec![1.0f64; sums.len()];
-
+    let mut var = vec![0.0f64; sums.len()];
     for j in 0..sums.len() {
         let m = sums[j] / n;
-        let mut var = sumsq[j] / n - m * m;
+        let mut v = sumsq[j] / n - m * m;
         if n_rows != 1 {
-            var *= n / (n - 1.0);
+            v *= n / (n - 1.0);
         }
-        let s = var.sqrt();
-        std[j] = if s == 0.0 { 1.0 } else { s };
         mean[j] = m;
+        var[j] = v;
     }
+    (mean, var)
+}
+
+/// Compute per-column mean and standard deviation.
+///
+/// Identical to `column_mean_var`, then `std_j = sqrt(var_j)` with
+/// `std_j = 1` where `var_j == 0` (matching Scanpy's `pp.scale`).
+pub fn column_mean_std(sums: &[f64], sumsq: &[f64], n_rows: usize) -> (Vec<f64>, Vec<f64>) {
+    let (mean, var) = column_mean_var(sums, sumsq, n_rows);
+    let std = var
+        .iter()
+        .map(|&v| {
+            let s = v.sqrt();
+            if s == 0.0 { 1.0 } else { s }
+        })
+        .collect();
     (mean, std)
 }
