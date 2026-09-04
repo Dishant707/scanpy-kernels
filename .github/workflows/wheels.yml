@@ -31,6 +31,8 @@ jobs:
           CIBW_ARCHS_LINUX: "x86_64"
           # Build both Intel and Apple Silicon wheels on the arm64 runner.
           CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # Match the wheel tag to the cross-compiled binary's minimum OS.
+          CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=11.0"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
