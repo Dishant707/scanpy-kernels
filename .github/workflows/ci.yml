@@ -22,7 +22,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install test dependencies
-        run: pip install scanpy pytest hypothesis
+        run: pip install "scanpy==1.12.3" pytest hypothesis
 
       - name: Build and install the extension
         run: pip install .
