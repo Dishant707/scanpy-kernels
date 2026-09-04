@@ -4,7 +4,7 @@
 //! See the P2 plan and `tests/test_scale_golden.py` for the correctness contract.
 
 use numpy::ndarray::{Array1, Array2};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyTuple};
@@ -211,4 +211,108 @@ where
     } else {
         Ok(out_arr.into_any())
     }
+}
+
+/// Scale a sparse (CSR) matrix's non-zero values and return mean/std.
+///
+/// `indices[k]` is the column index of `data[k]`; `n_rows`/`n_cols` are the
+/// matrix dimensions. Matches `scanpy.pp.scale`'s sparse path (sklearn-style
+/// mean/variance, upper-bound clipping only). `promote` reproduces the
+/// reference's CSC behaviour: CSC output is promoted to `float64`, CSR keeps
+/// its dtype.
+#[pyfunction]
+#[pyo3(signature = (indices, data, n_rows, n_cols, *, max_value=None, promote=false))]
+pub fn scale_sparse_data<'py>(
+    py: Python<'py>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    n_rows: usize,
+    n_cols: usize,
+    max_value: Option<f64>,
+    promote: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let idx = indices.extract::<PyReadonlyArray1<i64>>()?;
+    let idx = idx.as_slice()?;
+
+    if let Ok(d) = data.extract::<PyReadonlyArray1<f64>>() {
+        let dslice = d.as_slice()?;
+        let (sums, sumsq) = core::sparse_column_sum_and_sq(idx, dslice, n_cols);
+        let (mean, std) = core::column_mean_std(&sums, &sumsq, n_rows);
+        let out: Vec<f64> = dslice
+            .par_iter()
+            .enumerate()
+            .map(|(k, &v)| {
+                let c = idx[k] as usize;
+                let mut z = v / std[c];
+                if let Some(mx) = max_value {
+                    if z > mx {
+                        z = mx;
+                    }
+                }
+                z
+            })
+            .collect();
+        return scale_sparse_result(py, out, mean, std);
+    }
+
+    if let Ok(d) = data.extract::<PyReadonlyArray1<f32>>() {
+        let dslice = d.as_slice()?;
+        let (sums, sumsq) =
+            core::sparse_column_sum_and_sq_f32(idx, dslice, n_cols, promote);
+        let (mean, std) = core::column_mean_std(&sums, &sumsq, n_rows);
+
+        if promote {
+            let out: Vec<f64> = dslice
+                .par_iter()
+                .enumerate()
+                .map(|(k, &v)| {
+                    let c = idx[k] as usize;
+                    let mut z = v as f64 / std[c];
+                    if let Some(mx) = max_value {
+                        if z > mx {
+                            z = mx;
+                        }
+                    }
+                    z
+                })
+                .collect();
+            return scale_sparse_result(py, out, mean, std);
+        }
+
+        let out: Vec<f32> = dslice
+            .par_iter()
+            .enumerate()
+            .map(|(k, &v)| {
+                let c = idx[k] as usize;
+                let mut z = v as f64 / std[c];
+                if let Some(mx) = max_value {
+                    if z > mx {
+                        z = mx;
+                    }
+                }
+                z as f32
+            })
+            .collect();
+        return scale_sparse_result(py, out, mean, std);
+    }
+
+    Err(PyTypeError::new_err(
+        "sparse data must be float32 or float64",
+    ))
+}
+
+fn scale_sparse_result<'py, T>(
+    py: Python<'py>,
+    data: Vec<T>,
+    mean: Vec<f64>,
+    std: Vec<f64>,
+) -> PyResult<Bound<'py, PyAny>>
+where
+    T: numpy::Element + Copy,
+{
+    let d: Bound<'py, PyArray1<T>> = Array1::from_vec(data).into_pyarray(py);
+    let m: Bound<'py, PyArray1<f64>> = Array1::from_vec(mean).into_pyarray(py);
+    let s: Bound<'py, PyArray1<f64>> = Array1::from_vec(std).into_pyarray(py);
+    let tup = PyTuple::new(py, [d.into_any(), m.into_any(), s.into_any()])?;
+    Ok(tup.into_any())
 }

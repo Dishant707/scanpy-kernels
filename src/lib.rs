@@ -13,6 +13,8 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scale::scale, m)?)?;
+    m.add_function(wrap_pyfunction!(scale::scale_sparse_data, m)?)?;
     m.add_function(wrap_pyfunction!(hvg::hvg_seurat_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(hvg::hvg_seurat_stats_sparse, m)?)?;
     Ok(())
 }

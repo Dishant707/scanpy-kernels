@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 
-from ._core import hvg_seurat_stats
+from ._core import hvg_seurat_stats, hvg_seurat_stats_sparse
 
 
 def hvg_seurat(
-    x: np.ndarray,
+    x: np.ndarray | sp.spmatrix,
     *,
     n_bins: int = 20,
     n_top_genes: int | None = None,
@@ -26,13 +27,25 @@ def hvg_seurat(
     max_mean: float = 3.0,
     log_base: float | None = None,
 ) -> pd.DataFrame:
-    """Highly variable genes (Seurat flavor) for a dense log1p expression matrix.
+    """Highly variable genes (Seurat flavor) for a dense or sparse log1p matrix.
 
     Parameters mirror ``scanpy.pp.highly_variable_genes`` for ``flavor="seurat"``
     with a single batch. Returns a DataFrame with columns ``highly_variable``,
     ``means``, ``dispersions``, and ``dispersions_norm``.
     """
-    means_arr, dispersions_arr = hvg_seurat_stats(x, log_base=log_base)
+    if sp.issparse(x):
+        csr = x.tocsr()
+        means_arr, dispersions_arr = hvg_seurat_stats_sparse(
+            csr.indices.astype(np.int64, copy=False),
+            csr.data,
+            x.shape[0],
+            x.shape[1],
+            log_base=log_base,
+            square_f64=(x.format == "csc"),
+        )
+    else:
+        means_arr, dispersions_arr = hvg_seurat_stats(x, log_base=log_base)
+
     means = pd.Series(means_arr)
     dispersions = pd.Series(dispersions_arr)
 

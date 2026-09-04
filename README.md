@@ -11,8 +11,8 @@ data.
 
 | Kernel | Status |
 |--------|--------|
-| `pp.scale` (per-gene standardization) | ✅ dense `float32`/`float64`/integer |
-| `pp.highly_variable_genes` (Seurat flavor) | ✅ dense `float32`/`float64`/integer |
+| `pp.scale` (per-gene standardization) | ✅ dense + sparse (CSR/CSC), `float32`/`float64`/integer |
+| `pp.highly_variable_genes` (Seurat flavor) | ✅ dense + sparse (CSR/CSC), `float32`/`float64`/integer |
 
 ## Install (development)
 
@@ -36,7 +36,8 @@ X_scaled = scanpy_kernels.scale(X, zero_center=True, max_value=10.0)
 hvg = scanpy_kernels.hvg_seurat(np.log1p(X), n_bins=20)
 ```
 
-The public functions mirror Scanpy:
+The public functions mirror Scanpy and accept dense NumPy arrays or scipy sparse
+(CSR/CSC) matrices:
 
 ```
 scanpy_kernels.scale(x, *, zero_center=True, max_value=None, return_mean_std=False)
@@ -44,11 +45,30 @@ scanpy_kernels.hvg_seurat(x, *, n_bins=20, n_top_genes=None, min_disp=0.5,
                           max_disp=inf, min_mean=0.0125, max_mean=3.0, log_base=None)
 ```
 
+### Drop-in integration
+
+Make existing Scanpy pipelines use the kernels transparently (with automatic
+fallback to Scanpy for anything unsupported):
+
+```python
+import scanpy_kernels
+
+scanpy_kernels.install()   # patches scanpy.pp.scale and scanpy.pp.highly_variable_genes
+# ... your normal scanpy.pp.scale(...) / scanpy.pp.highly_variable_genes(...) calls ...
+scanpy_kernels.uninstall()
+```
+
 ## Verify
 
 ```bash
 pytest tests/
 ```
+
+## Real-data validation
+
+`bench/validate_pbmc3k.py` runs the kernels end-to-end on the published PBMC 3k
+dataset and confirms identical results: same HVG selection, bit-identical
+scaled matrix, and identical Leiden clusters (13 clusters).
 
 ## Benchmark
 

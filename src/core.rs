@@ -111,3 +111,138 @@ pub fn column_mean_std(sums: &[f64], sumsq: &[f64], n_rows: usize) -> (Vec<f64>,
         .collect();
     (mean, std)
 }
+
+/// Non-zeros processed per parallel chunk. Fixed so results are deterministic.
+pub(crate) const CHUNK_NNZ: usize = 1_000_000;
+
+/// Per-column sum and sum-of-squares from sparse (CSR) `indices`/`data`.
+///
+/// `indices[k]` is the column of `data[k]`. Matches the sklearn-style sparse
+/// mean/variance used by `fast_array_utils.stats._sparse_mean_var`; the
+/// division and Bessel correction are applied later by `column_mean_var`.
+pub fn sparse_column_sum_and_sq(
+    indices: &[i64],
+    data: &[f64],
+    n_cols: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let partials: Vec<(Vec<f64>, Vec<f64>)> = data
+        .par_chunks(CHUNK_NNZ)
+        .enumerate()
+        .map(|(ci, chunk)| {
+            let start = ci * CHUNK_NNZ;
+            let mut sums = vec![0.0f64; n_cols];
+            let mut sq = vec![0.0f64; n_cols];
+            for k in 0..chunk.len() {
+                let c = indices[start + k] as usize;
+                let v = chunk[k];
+                sums[c] += v;
+                sq[c] += v * v;
+            }
+            (sums, sq)
+        })
+        .collect();
+    combine(partials, n_cols)
+}
+
+/// `float32` variant of [`sparse_column_sum_and_sq`].
+///
+/// `square_f64` reproduces a reference asymmetry: the CSR path squares in
+/// `float32` (`x**2`), while the CSC path casts to `float64` before squaring.
+pub fn sparse_column_sum_and_sq_f32(
+    indices: &[i64],
+    data: &[f32],
+    n_cols: usize,
+    square_f64: bool,
+) -> (Vec<f64>, Vec<f64>) {
+    let partials: Vec<(Vec<f64>, Vec<f64>)> = data
+        .par_chunks(CHUNK_NNZ)
+        .enumerate()
+        .map(|(ci, chunk)| {
+            let start = ci * CHUNK_NNZ;
+            let mut sums = vec![0.0f64; n_cols];
+            let mut sq = vec![0.0f64; n_cols];
+            for k in 0..chunk.len() {
+                let c = indices[start + k] as usize;
+                let v = chunk[k];
+                sums[c] += v as f64;
+                let s = if square_f64 {
+                    let vv = v as f64;
+                    vv * vv
+                } else {
+                    (v * v) as f64
+                };
+                sq[c] += s;
+            }
+            (sums, sq)
+        })
+        .collect();
+    combine(partials, n_cols)
+}
+
+/// Sparse per-column sum of `expm1(value)` and its square (Seurat HVG).
+pub fn sparse_expm1_sum_and_sq(
+    indices: &[i64],
+    data: &[f64],
+    n_cols: usize,
+    scale: Option<f64>,
+) -> (Vec<f64>, Vec<f64>) {
+    let partials: Vec<(Vec<f64>, Vec<f64>)> = data
+        .par_chunks(CHUNK_NNZ)
+        .enumerate()
+        .map(|(ci, chunk)| {
+            let start = ci * CHUNK_NNZ;
+            let mut sums = vec![0.0f64; n_cols];
+            let mut sq = vec![0.0f64; n_cols];
+            for k in 0..chunk.len() {
+                let c = indices[start + k] as usize;
+                let mut v = chunk[k];
+                if let Some(s) = scale {
+                    v *= s;
+                }
+                let e = v.exp_m1();
+                sums[c] += e;
+                sq[c] += e * e;
+            }
+            (sums, sq)
+        })
+        .collect();
+    combine(partials, n_cols)
+}
+
+/// `float32` variant of [`sparse_expm1_sum_and_sq`]: `expm1` in `f32`, squaring
+/// in `f32` (`square_f64=false`, CSR) or `f64` (`square_f64=true`, CSC).
+pub fn sparse_expm1_sum_and_sq_f32(
+    indices: &[i64],
+    data: &[f32],
+    n_cols: usize,
+    scale: Option<f64>,
+    square_f64: bool,
+) -> (Vec<f64>, Vec<f64>) {
+    let partials: Vec<(Vec<f64>, Vec<f64>)> = data
+        .par_chunks(CHUNK_NNZ)
+        .enumerate()
+        .map(|(ci, chunk)| {
+            let start = ci * CHUNK_NNZ;
+            let mut sums = vec![0.0f64; n_cols];
+            let mut sq = vec![0.0f64; n_cols];
+            for k in 0..chunk.len() {
+                let c = indices[start + k] as usize;
+                let v = match scale {
+                    Some(s) => (chunk[k] as f64 * s) as f32,
+                    None => chunk[k],
+                };
+                let e = v.exp_m1(); // f32
+                sums[c] += e as f64;
+                let s = if square_f64 {
+                    let ee = e as f64;
+                    ee * ee
+                } else {
+                    (e * e) as f64
+                };
+                sq[c] += s;
+            }
+            (sums, sq)
+        })
+        .collect();
+    combine(partials, n_cols)
+}

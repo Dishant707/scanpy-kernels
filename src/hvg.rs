@@ -9,7 +9,7 @@
 //! O(n_vars) and are done in the Python wrapper to match pandas exactly.
 
 use numpy::ndarray::Array1;
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyTuple};
@@ -72,6 +72,39 @@ pub fn hvg_seurat_stats<'py>(
     let (sums, sumsq) = hvg_sum_sq_f64(data, n_cols, scale);
     let (mean, var) = core::column_mean_var(&sums, &sumsq, n_rows);
     finish_hvg(py, &mean, &var)
+}
+
+/// Sparse (CSR) variant of [`hvg_seurat_stats`]: `indices[k]` is the column of
+/// `data[k]`. Same Seurat recipe, but sums only the non-zero entries.
+#[pyfunction]
+#[pyo3(signature = (indices, data, n_rows, n_cols, *, log_base=None, square_f64=false))]
+pub fn hvg_seurat_stats_sparse<'py>(
+    py: Python<'py>,
+    indices: &Bound<'py, PyAny>,
+    data: &Bound<'py, PyAny>,
+    n_rows: usize,
+    n_cols: usize,
+    log_base: Option<f64>,
+    square_f64: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let scale = log_base.map(|b| b.ln());
+    let idx = indices.extract::<PyReadonlyArray1<i64>>()?;
+    let idx = idx.as_slice()?;
+
+    if let Ok(d) = data.extract::<PyReadonlyArray1<f64>>() {
+        let (sums, sumsq) = core::sparse_expm1_sum_and_sq(idx, d.as_slice()?, n_cols, scale);
+        let (mean, var) = core::column_mean_var(&sums, &sumsq, n_rows);
+        return finish_hvg(py, &mean, &var);
+    }
+
+    if let Ok(d) = data.extract::<PyReadonlyArray1<f32>>() {
+        let (sums, sumsq) =
+            core::sparse_expm1_sum_and_sq_f32(idx, d.as_slice()?, n_cols, scale, square_f64);
+        let (mean, var) = core::column_mean_var(&sums, &sumsq, n_rows);
+        return finish_hvg(py, &mean, &var);
+    }
+
+    Err(PyTypeError::new_err("sparse data must be float32 or float64"))
 }
 
 fn hvg_sum_sq_f64(x: &[f64], n_cols: usize, scale: Option<f64>) -> (Vec<f64>, Vec<f64>) {

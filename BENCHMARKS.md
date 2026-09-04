@@ -52,3 +52,25 @@ The kernel computes `expm1` + per-gene mean/variance in a single row-major pass
 (no materialization of the `expm1`'d matrix, no copy); binning/normalization
 reuse the reference pandas logic. Output is bit-identical to the reference on
 the categorical/boolean parts.
+
+## Sparse (CSR/CSC) support
+
+The sparse paths compute mean/variance in Rust and scale the non-zero values in
+Rust (no densification, no numpy round-trip). Scanpy's sparse path is already
+numba-compiled, so this is roughly at parity:
+
+| Case | nnz | reference | kernel | speedup |
+|------|-----|-----------|--------|---------|
+| sparse scale, CSR float32 | 5.2M | 8.1 ms | 5.8 ms | 1.4× |
+
+The dense paths above are where the large speedups are; sparse support is about
+functional completeness (handling real scRNA-seq matrices without densifying).
+
+## Real-data validation
+
+`bench/validate_pbmc3k.py` (PBMC 3k, 2700 × 13714, sparse float32):
+
+- HVG (Seurat): identical gene selection (n=1872), `means` diff = 0.0.
+- scale (sparse, `zero_center=False`): max `|data|` diff = 0.0.
+- Downstream PCA + Leiden: identical clusters (13 clusters).
+
