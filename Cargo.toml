@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust-accelerated kernels for Scanpy (correctness-first)"
 license = "BSD-3-Clause"
+repository = "https://github.com/Dishant707/scanpy-kernels"
+keywords = ["scanpy", "single-cell", "rust", "pyo3"]
+categories = ["science"]
 
 [lib]
 name = "_core"
