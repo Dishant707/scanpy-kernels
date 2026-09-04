@@ -19,6 +19,9 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # Needed to cross-compile the macOS Intel wheel on the arm64 runner.
+          targets: x86_64-apple-darwin
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
