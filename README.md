@@ -14,7 +14,25 @@ data.
 | `pp.scale` (per-gene standardization) | ✅ dense + sparse (CSR/CSC), `float32`/`float64`/integer |
 | `pp.highly_variable_genes` (Seurat flavor) | ✅ dense + sparse (CSR/CSC), `float32`/`float64`/integer |
 
-## Install (development)
+## Install
+
+### For researchers (prebuilt wheels, from PyPI)
+
+```bash
+pip install scanpy-kernels
+```
+
+No Rust or compiler needed. Prebuilt wheels are built for Linux, macOS
+(Intel + Apple Silicon) and Windows via GitHub Actions on every tagged release.
+
+Then add two lines to any existing Scanpy script:
+
+```python
+import scanpy_kernels
+scanpy_kernels.install()   # pp.scale & pp.highly_variable_genes now use Rust
+```
+
+### For development (from source)
 
 ```bash
 python -m venv .venv

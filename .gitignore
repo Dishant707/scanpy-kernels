@@ -16,3 +16,6 @@ __pycache__/
 
 # downloaded datasets
 data/
+
+# PDF / marketing artifacts (not part of the package)
+pdf/
