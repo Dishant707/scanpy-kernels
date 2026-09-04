@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-14, windows-2022]
+        os: [ubuntu-22.04, macos-14, windows-2022]
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +26,8 @@ jobs:
           # Skip PyPy and musllinux (Alpine); cover the common CPython builds.
           CIBW_SKIP: "pp* *-musllinux*"
           CIBW_ARCHS_LINUX: "x86_64"
+          # Build both Intel and Apple Silicon wheels on the arm64 runner.
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
